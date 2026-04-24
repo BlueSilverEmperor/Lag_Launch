@@ -7,10 +7,12 @@ import time
 import cv2
 import threading
 import traceback
+import os
 import datetime as dt
 from pathlib import Path
 from queue import Queue, Empty
-
+from dotenv import load_dotenv
+load_dotenv()
 from flask import Flask, jsonify, request, Response, send_from_directory, abort
 from flask_cors import CORS
 
@@ -24,6 +26,8 @@ from core.detector import (
 )
 from core.verifier import YOLO_AVAILABLE
 from core.discovery import discover_videos
+from flask_httpauth import HTTPTokenAuth
+from flask import abort
 from core.storage import get_storage
 from core.compliance import RightsComplianceEngine
 from core.rights_gateway import RightsGateway
@@ -33,6 +37,15 @@ from core.zeroday import init_monitor, get_monitor
 VIDEO_EXTENSIONS: set[str] = {
     ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v"
 }
+# FLASK AND API STUFF (SECURITY)
+auth = HTTPTokenAuth(scheme='Bearer')
+API_KEY = os.environ.get("API_KEY")
+@auth.verify_token
+def verify_token(token):
+    if token == API_KEY:
+        return True
+    return False
+
 
 # Temporary memory to prevent spamming web crawlers with duplicate topics
 _SCANNED_TOPICS_CACHE: set[str] = set()
@@ -595,6 +608,7 @@ def index():
 
 
 @app.route("/api/status")
+@auth.login_required
 def api_status():
     db_clips = storage.get_hash_count()
     # For total frames we still need to load all or add a new storage method
@@ -615,6 +629,7 @@ def api_status():
 
 
 @app.route("/api/ingest", methods=["POST"])
+@auth.login_required
 def api_ingest():
     body        = request.get_json(force=True, silent=True) or {}
     source      = body.get("source", "")
@@ -636,6 +651,7 @@ def api_ingest():
 
 
 @app.route("/api/scan", methods=["POST"])
+@auth.login_required
 def api_scan():
     body           = request.get_json(force=True, silent=True) or {}
     video_path     = body.get("video_path", "")
@@ -662,6 +678,7 @@ def api_scan():
 
 
 @app.route("/api/auto_ingest", methods=["POST"])
+@auth.login_required
 def api_auto_ingest():
     body = request.get_json(force=True, silent=True) or {}
     topic = body.get("topic", "")
@@ -681,6 +698,7 @@ def api_auto_ingest():
 
 
 @app.route("/api/stream/<job_id>")
+@auth.login_required
 def api_stream(job_id: str):
     job = storage.get_job(job_id)
     if not job:
@@ -725,12 +743,14 @@ def api_stream(job_id: str):
 
 
 @app.route("/api/jobs")
+@auth.login_required
 def api_jobs():
     jobs = storage.list_jobs(50)
     return jsonify(jobs)
 
 
 @app.route("/api/reports")
+@auth.login_required
 def api_reports():
     reports = storage.list_reports(100)
     # Map fields for UI compatibility
@@ -749,6 +769,7 @@ def api_reports():
 
 
 @app.route("/api/reports/<filename>")
+@auth.login_required
 def api_report_detail(filename: str):
     report = storage.get_report(filename)
     if not report:
@@ -757,6 +778,7 @@ def api_report_detail(filename: str):
 
 
 @app.route("/api/db", methods=["GET"])
+@auth.login_required
 def api_db_info():
     db = storage.load_all_hashes()
     clips = [
@@ -767,6 +789,7 @@ def api_db_info():
 
 
 @app.route("/api/compliance/authorized", methods=["GET", "POST"])
+@auth.login_required
 def api_auth_manager():
     if request.method == "GET":
         return jsonify(storage.list_authorized_publishers())
@@ -782,23 +805,27 @@ def api_auth_manager():
 
 
 @app.route("/api/compliance/authorized/<int:pub_id>", methods=["DELETE"])
+@auth.login_required
 def api_delete_authorized(pub_id: int):
     storage.remove_authorized_publisher(pub_id)
     return jsonify({"message": "Publisher removed from authorized list."})
 
 
 @app.route("/api/discovery/results", methods=["GET"])
+@auth.login_required
 def api_discovery_results():
     return jsonify(storage.list_discovery_results())
 
 
 @app.route("/api/zeroday/status", methods=["GET"])
+@auth.login_required
 def api_zeroday_status():
     mon = get_monitor()
     return jsonify({"running": mon.is_running if mon else False})
 
 
 @app.route("/api/zeroday/start", methods=["POST"])
+@auth.login_required
 def api_zeroday_start():
     mon = get_monitor()
     if not mon:
@@ -810,6 +837,7 @@ def api_zeroday_start():
 
 
 @app.route("/api/zeroday/stop", methods=["POST"])
+@auth.login_required
 def api_zeroday_stop():
     mon = get_monitor()
     if mon:
@@ -818,6 +846,7 @@ def api_zeroday_stop():
 
 
 @app.route("/api/db", methods=["DELETE"])
+@auth.login_required
 def api_db_clear():
     storage.clear_hashes()
     return jsonify({"message": "Hash database cleared from MongoDB."})
@@ -845,7 +874,10 @@ def _migrate_data():
     # 2. Migrate from MySQL (Legacy v3.0m)
     try:
         import mysql.connector
-        cnx = mysql.connector.connect(host="localhost", user="root", password="Sridhar1234$", database="dap_db")
+        cnx = mysql.connector.connect(host=os.environ.get("DB_HOST"),
+    user=os.environ.get("DB_USER"),
+    password=os.environ.get("DB_PASSWORD"),
+    database=os.environ.get("DB_NAME"))
         cursor = cnx.cursor(dictionary=True)
         
         # Migrate Clips & Hashes
