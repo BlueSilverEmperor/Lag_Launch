@@ -1,0 +1,130 @@
+{
+  "generated_at": "2026-04-22T13:29:23.690308",
+  "suspect_video": "Me at the zoo",
+  "total_frames_checked": 10,
+  "matched_frames": 10,
+  "similarity_percentage": 100.0,
+  "logo_confirmations": 0,
+  "verdict": "HIGH SIMILARITY \u2014 Likely Unauthorized Copy",
+  "compliance_status": "FLAGGED",
+  "compliance_reason": "The publisher 'jawed' does not exist in the authorized list ('Real Madrid on YouTube').",
+  "publisher": "jawed",
+  "topics": [
+    "Zoo",
+    "Animals",
+    "Personal Experience",
+    "Travel"
+  ],
+  "frames": [
+    {
+      "suspect_timestamp": 18.0,
+      "suspect_time_fmt": "00:18",
+      "hamming_distance": 0,
+      "is_match": true,
+      "matched_clip": "jNQXAC9IVRw_Me at the zoo.mp4",
+      "matched_timestamp": 18.0,
+      "logo_detected": false,
+      "logo_confidence": null,
+      "flag_status": "SUSPECTED COPY"
+    },
+    {
+      "suspect_timestamp": 4.0,
+      "suspect_time_fmt": "00:04",
+      "hamming_distance": 0,
+      "is_match": true,
+      "matched_clip": "jNQXAC9IVRw_Me at the zoo.mp4",
+      "matched_timestamp": 4.0,
+      "logo_detected": false,
+      "logo_confidence": null,
+      "flag_status": "SUSPECTED COPY"
+    },
+    {
+      "suspect_timestamp": 0.0,
+      "suspect_time_fmt": "00:00",
+      "hamming_distance": 0,
+      "is_match": true,
+      "matched_clip": "jNQXAC9IVRw_Me at the zoo.mp4",
+      "matched_timestamp": 0.0,
+      "logo_detected": false,
+      "logo_confidence": null,
+      "flag_status": "SUSPECTED COPY"
+    },
+    {
+      "suspect_timestamp": 14.0,
+      "suspect_time_fmt": "00:14",
+      "hamming_distance": 0,
+      "is_match": true,
+      "matched_clip": "jNQXAC9IVRw_Me at the zoo.mp4",
+      "matched_timestamp": 14.0,
+      "logo_detected": false,
+      "logo_confidence": null,
+      "flag_status": "SUSPECTED COPY"
+    },
+    {
+      "suspect_timestamp": 12.0,
+      "suspect_time_fmt": "00:12",
+      "hamming_distance": 0,
+      "is_match": true,
+      "matched_clip": "jNQXAC9IVRw_Me at the zoo.mp4",
+      "matched_timestamp": 12.0,
+      "logo_detected": false,
+      "logo_confidence": null,
+      "flag_status": "SUSPECTED COPY"
+    },
+    {
+      "suspect_timestamp": 8.0,
+      "suspect_time_fmt": "00:08",
+      "hamming_distance": 0,
+      "is_match": true,
+      "matched_clip": "jNQXAC9IVRw_Me at the zoo.mp4",
+      "matched_timestamp": 8.0,
+      "logo_detected": false,
+      "logo_confidence": null,
+      "flag_status": "SUSPECTED COPY"
+    },
+    {
+      "suspect_timestamp": 2.0,
+      "suspect_time_fmt": "00:02",
+      "hamming_distance": 0,
+      "is_match": true,
+      "matched_clip": "jNQXAC9IVRw_Me at the zoo.mp4",
+      "matched_timestamp": 2.0,
+      "logo_detected": false,
+      "logo_confidence": null,
+      "flag_status": "SUSPECTED COPY"
+    },
+    {
+      "suspect_timestamp": 16.0,
+      "suspect_time_fmt": "00:16",
+      "hamming_distance": 0,
+      "is_match": true,
+      "matched_clip": "jNQXAC9IVRw_Me at the zoo.mp4",
+      "matched_timestamp": 16.0,
+      "logo_detected": false,
+      "logo_confidence": null,
+      "flag_status": "SUSPECTED COPY"
+    },
+    {
+      "suspect_timestamp": 6.0,
+      "suspect_time_fmt": "00:06",
+      "hamming_distance": 0,
+      "is_match": true,
+      "matched_clip": "jNQXAC9IVRw_Me at the zoo.mp4",
+      "matched_timestamp": 6.0,
+      "logo_detected": false,
+      "logo_confidence": null,
+      "flag_status": "SUSPECTED COPY"
+    },
+    {
+      "suspect_timestamp": 10.0,
+      "suspect_time_fmt": "00:10",
+      "hamming_distance": 0,
+      "is_match": true,
+      "matched_clip": "jNQXAC9IVRw_Me at the zoo.mp4",
+      "matched_timestamp": 10.0,
+      "logo_detected": false,
+      "logo_confidence": null,
+      "flag_status": "SUSPECTED COPY"
+    }
+  ]
+}
