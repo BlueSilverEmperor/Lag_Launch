@@ -10,10 +10,14 @@ import uuid
 import datetime
 from typing import Any, Dict, List, Optional
 from pymongo import MongoClient, DESCENDING, UpdateOne
+from dotenv import load_dotenv
+load_dotenv()
 
 class MongoStorage:
     def __init__(self, uri="mongodb://localhost:27017/", database="dap_db"):
-        self.client = MongoClient(uri)
+        import os
+
+        self.client = MongoClient(os.environ.get("MONGO_URI"))
         self.db = self.client[database]
         
         # Collections

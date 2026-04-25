@@ -15,6 +15,13 @@ from dotenv import load_dotenv
 load_dotenv()
 from flask import Flask, jsonify, request, Response, send_from_directory, abort
 from flask_cors import CORS
+from collections import defaultdict
+import time
+
+RATE_LIMIT_WINDOW = 60  # seconds
+RATE_LIMIT_MAX_REQUESTS = 5
+
+REQUEST_LOG = defaultdict(list)
 
 # ─── Core + Pipeline imports ──────────────────────────────────────────────────
 from core.hasher import hash_video, extract_frames, FRAME_INTERVAL_SEC
@@ -33,10 +40,85 @@ from core.compliance import RightsComplianceEngine
 from core.rights_gateway import RightsGateway
 from core.visual_analyser import VisualAnalyser
 from core.zeroday import init_monitor, get_monitor
+from concurrent.futures import ThreadPoolExecutor
 # ─── Constants & Utilities ──────────────────────────────────────────────────
 VIDEO_EXTENSIONS: set[str] = {
     ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v"
 }
+ALLOWED_UPLOAD_DIR = (BASE_DIR / "uploads").resolve()
+ALLOWED_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+MAX_AUTO_SCAN_THREADS = 4
+MAX_AUTO_SCAN_URLS = 20
+
+#url saftey
+import ipaddress
+import socket
+from urllib.parse import urlparse
+
+def is_safe_url(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+
+        # Only allow HTTPS
+        if parsed.scheme != "https":
+            return False
+
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+
+        # Resolve all IPs (prevents DNS rebinding tricks)
+        addresses = socket.getaddrinfo(hostname, None)
+
+        for addr in addresses:
+            ip = addr[4][0]
+            ip_obj = ipaddress.ip_address(ip)
+
+            if (
+                ip_obj.is_private or
+                ip_obj.is_loopback or
+                ip_obj.is_reserved or
+                ip_obj.is_link_local or
+                ip_obj.is_multicast
+            ):
+                return False
+
+        return True
+
+    except Exception:
+        return False
+
+def is_safe_path(path_str: str) -> bool:
+    try:
+        p = Path(path_str).resolve()
+
+        # Only allow paths inside uploads directory
+        return p.is_relative_to(ALLOWED_UPLOAD_DIR)
+
+    except Exception:
+        return False
+def is_rate_limited(ip: str) -> bool:
+    now = time.time()
+    window_start = now - RATE_LIMIT_WINDOW
+
+    requests = REQUEST_LOG[ip]
+
+    # Remove old requests
+    REQUEST_LOG[ip] = [t for t in requests if t > window_start]
+
+    if len(REQUEST_LOG[ip]) >= RATE_LIMIT_MAX_REQUESTS:
+        return True
+
+    REQUEST_LOG[ip].append(now)
+    return False
+import re
+
+def sanitize_filename(name: str) -> str:
+    # keep only a-z A-Z 0-9 _ -
+    safe = re.sub(r'[^a-zA-Z0-9_-]', '_', name)
+    return safe[:64]
+
+
 # FLASK AND API STUFF (SECURITY)
 auth = HTTPTokenAuth(scheme='Bearer')
 API_KEY = os.environ.get("API_KEY")
@@ -66,7 +148,12 @@ def _save_db(db: dict, db_path: Path) -> None:
 
 # ─── App setup ────────────────────────────────────────────────────────────────
 app = Flask(__name__, static_folder=str(STATIC_DIR), static_url_path="")
-CORS(app)
+CORS(
+    app,
+    origins=["http://localhost:3000"],
+    methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Authorization"]
+)
 
 # ─── Job registry ─────────────────────────────────────────────────────────────
 storage = get_storage()
@@ -122,6 +209,8 @@ class ResilientDownloader:
         self.q.put({"type": type, "message": f"[ResilientIO] {message}"})
 
     def download(self, url: str) -> tuple[Path, str]:
+        if not is_safe_url(url):
+            raise ValueError("Blocked unsafe URL at downloader level")
         import yt_dlp
         
         # 1. Attempt best format (may require merging)
@@ -176,7 +265,11 @@ def _worker_ingest(job_id: str, source: str, interval_sec: float, overwrite: boo
 
     try:
         videos = []
-        is_url = source.startswith("http://") or source.startswith("https://")
+        is_url = source.startswith("http")
+
+        if is_url:
+            if not is_safe_url(source):
+                raise ValueError("Unsafe or invalid URL blocked")
         
         downloader = ResilientDownloader(q)
         
@@ -185,10 +278,15 @@ def _worker_ingest(job_id: str, source: str, interval_sec: float, overwrite: boo
             path, title = downloader.download(source)
             videos.append((str(path), title))
         else:
-            source_path = Path(source)
+            if not is_safe_path(source):
+                raise ValueError("Access to this path is not allowed")
+
+            source_path = Path(source).resolve()
+
             if source_path.is_dir():
                 videos = [
-                    (str(p), p.name) for p in sorted(source_path.iterdir())
+                    (str(p), p.name)
+                    for p in sorted(source_path.iterdir())
                     if p.is_file() and p.suffix.lower() in VIDEO_EXTENSIONS
                 ]
             elif source_path.is_file() and source_path.suffix.lower() in VIDEO_EXTENSIONS:
@@ -209,6 +307,7 @@ def _worker_ingest(job_id: str, source: str, interval_sec: float, overwrite: boo
         skipped  = 0
 
         for i, (stream_url, vid_name) in enumerate(videos):
+            vid_name = sanitize_filename(vid_name)
             q.put({"type": "info", 
                    "message": f"[{i+1}/{len(videos)}] Processing: {vid_name}"})
             
@@ -329,7 +428,11 @@ def _worker_scan(
 
     try:
         downloader = ResilientDownloader(q)
-        is_url = video_path.startswith("http://") or video_path.startswith("https://")
+        is_url = video_path.startswith("http")
+
+        if is_url:
+            if not is_safe_url(video_path):
+                raise ValueError("Unsafe or invalid URL blocked")
         
         # 1. Start preparation
         if is_url:
@@ -346,11 +449,15 @@ def _worker_scan(
             finally:
                 loop.close()
         else:
-            vp = Path(video_path)
+            if not is_safe_path(video_path):
+                raise ValueError("Access to this path is not allowed")
+
+            vp = Path(video_path).resolve()
+
             if not vp.is_file():
                 raise FileNotFoundError(f"Video file not found: {video_path}")
             stream_url = str(vp)
-            vid_name = vp.name
+            vid_name = sanitize_filename(vp.name)
             metadata = {"uploader": "Unknown", "title": vid_name, "platform": "Local"}
 
         # 2. Initialize AI Modules
@@ -515,7 +622,8 @@ def _worker_scan(
 
         # Persist to MongoDB
         ts_str = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-        report_filename = f"{vid_name}_{ts_str}_report.json"
+        safe_name = sanitize_filename(vid_name)
+        report_filename = f"{safe_name}_{ts_str}_report.json"
         
         final_report_data = {
             "report_filename":       report_filename,
@@ -571,21 +679,36 @@ def _worker_auto_ingest(job_id: str, topic: str, auto_scan: bool) -> None:
         
         if auto_scan and high_risk_urls:
             q.put({"type": "info", "message": f"Auto-scanning {len(high_risk_urls)} high-risk links..."})
-            for idx, url in enumerate(high_risk_urls):
-                q.put({"type": "info", "message": f"--- Sending to Scan Pipeline: {url} ---"})
-                try:
-                    # Leverage the generic scan worker by firing a new job
-                    # Or do it inline. Let's do it via new job invocation on DB
-                    scan_job_id, _ = _new_job("scan")
-                    t = threading.Thread(
-                        target=_worker_scan,
-                        args=(scan_job_id, url, MATCH_THRESHOLD, FRAME_INTERVAL_SEC, True),
-                        daemon=True
-                    )
-                    t.start()
-                    q.put({"type": "info", "message": f"Started background scan job: {scan_job_id}"})
-                except Exception as e:
-                    q.put({"type": "warning", "message": f"Failed to queue {url}: {e}"})
+            # Limit number of URLs processed
+            limited_urls = high_risk_urls[:MAX_AUTO_SCAN_URLS]
+
+            q.put({
+                "type": "info",
+                "message": f"Processing {len(limited_urls)} URLs (capped from {len(high_risk_urls)})"
+            })
+
+            with ThreadPoolExecutor(max_workers=MAX_AUTO_SCAN_THREADS) as executor:
+                for idx, url in enumerate(limited_urls):
+                    q.put({"type": "info", "message": f"--- Queueing Scan: {url} ---"})
+                    try:
+                        scan_job_id, _ = _new_job("scan")
+
+                        executor.submit(
+                            _worker_scan,
+                            scan_job_id,
+                            url,
+                            MATCH_THRESHOLD,
+                            FRAME_INTERVAL_SEC,
+                            True
+                        )
+
+                        q.put({
+                            "type": "info",
+                            "message": f"Queued scan job: {scan_job_id}"
+                        })
+
+                    except Exception as e:
+                        q.put({"type": "warning", "message": f"Failed to queue {url}: {e}"})
 
         storage.update_job(job_id, {"status": "done", "result": results})
         q.put({
@@ -639,6 +762,10 @@ def api_ingest():
 
     if not source:
         return jsonify({"error": "source is required"}), 400
+    if source.startswith("http") and not is_safe_url(source):
+        return jsonify({"error": "Invalid or unsafe URL"}), 400
+    if not source.startswith("http") and not is_safe_path(source):
+        return jsonify({"error": "Invalid or unauthorized local path"}), 400
 
     job_id, _ = _new_job("ingest")
     t = threading.Thread(
@@ -665,6 +792,10 @@ def api_scan():
 
     if not video_path:
         return jsonify({"error": "video_path is required"}), 400
+    if video_path.startswith("http") and not is_safe_url(video_path):
+        return jsonify({"error": "Invalid or unsafe URL"}), 400
+    if not video_path.startswith("http") and not is_safe_path(video_path):
+        return jsonify({"error": "Invalid or unauthorized local path"}), 400
 
     job_id, _ = _new_job("scan")
     t = threading.Thread(
@@ -681,6 +812,10 @@ def api_scan():
 @auth.login_required
 def api_auto_ingest():
     body = request.get_json(force=True, silent=True) or {}
+    client_ip = request.remote_addr or "unknown"
+
+    if is_rate_limited(client_ip):
+        return jsonify({"error": "Rate limit exceeded. Try again later."}), 429
     topic = body.get("topic", "")
     auto_scan = bool(body.get("auto_scan", True))
 
