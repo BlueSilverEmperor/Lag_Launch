@@ -66,6 +66,7 @@ const API = '';   // same-origin — Flask serves both
     drawGrid();
     drawConnections();
 
+    ctx.save();
     particles.forEach(p => {
       p.x += p.vx; p.y += p.vy;
       if (p.x < 0 || p.x > W) p.vx *= -1;
@@ -73,13 +74,11 @@ const API = '';   // same-origin — Flask serves both
 
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-      ctx.fillStyle = p.color.replace(')', `, ${p.a})`).replace('rgb', 'rgba').replace(/^#/, 'rgba(').replace(/(..)(..)(..)/, (_, r, g, b) => `${parseInt(r,16)}, ${parseInt(g,16)}, ${parseInt(b,16)},`);
-      // Simplified: just use fillStyle with hex + alpha via globalAlpha
-      ctx.globalAlpha = p.a;
-      ctx.fillStyle   = p.color;
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = p.a * 0.4;
       ctx.fill();
-      ctx.globalAlpha = 1;
     });
+    ctx.restore();
 
     requestAnimationFrame(animate);
   }
@@ -237,6 +236,8 @@ function clearLog(containerId) {
 function flagChip(status) {
   const map = {
     'CONFIRMED INFRINGEMENT': ['flag-confirmed', '🚨 Confirmed'],
+    'SUSPECTED INFRINGEMENT': ['flag-confirmed', '🛡️ Suspected'],
+    'SIMILAR CONTENT':        ['flag-suspected', '⚠️ Similar'],
     'SUSPECTED COPY':          ['flag-suspected', '⚠️ Suspected'],
     'CLEAR':                   ['flag-clear',     '✅ Clear'],
   };
@@ -244,7 +245,11 @@ function flagChip(status) {
   return `<span class="flag-chip ${cls}">${label}</span>`;
 }
 
-function dhChip(d) {
+function dhChip(d, sim) {
+  if (sim !== undefined && sim !== null) {
+      const cls = sim >= 0.9 ? 'dh-low' : sim >= 0.8 ? 'dh-mid' : 'dh-high';
+      return `<span class="dh-chip ${cls}" title="Cosine Similarity">${(sim * 100).toFixed(0)}%</span>`;
+  }
   if (d === null || d === undefined || d > 250) return `<span class="dh-chip dh-high">—</span>`;
   const cls = d < 4 ? 'dh-low' : d < 8 ? 'dh-mid' : 'dh-high';
   return `<span class="dh-chip ${cls}">${d}</span>`;
@@ -269,29 +274,6 @@ const App = {
 
   // ── Dashboard ─────────────────────────────────────────────────
 
-  async refreshStatus() {
-    try {
-      const s = await fetch(`${API}/api/status`).then(r => r.json());
-      document.getElementById('v-clips').textContent   = s.db_clips;
-      document.getElementById('v-frames').textContent  = s.total_frames.toLocaleString();
-      document.getElementById('v-reports').textContent = s.report_count;
-      document.getElementById('v-jobs').textContent    = s.running_jobs;
-
-      // YOLO status dot
-      const dot   = document.getElementById('yolo-dot');
-      const label = document.getElementById('yolo-label');
-      if (s.yolo_available) {
-        dot.classList.add('active');
-        label.textContent = 'YOLOv8 Ready';
-      } else {
-        dot.classList.add('error');
-        label.textContent = 'YOLOv8 Missing';
-      }
-    } catch (e) {
-      Toast.show('Cannot reach server — is server.py running?', 'error');
-    }
-  },
-
   async refreshDB() {
     try {
       const { clips } = await fetch(`${API}/api/db`).then(r => r.json());
@@ -309,30 +291,90 @@ const App = {
     } catch {}
   },
 
-  async refreshJobs() {
+  async refreshStatus() {
     try {
-      const jobs = await fetch(`${API}/api/jobs`).then(r => r.json());
-      const el   = document.getElementById('recent-jobs-list');
-      if (!jobs.length) {
-        el.innerHTML = '<div class="empty-state">No jobs run yet.</div>';
-        return;
+      const ai = await fetch(`${API}/api/ai_status`).then(r => r.json());
+      
+      // 1. Gemini
+      const gDot = document.getElementById('gemini-dot');
+      const gLab = document.getElementById('gemini-label');
+      if (gDot && gLab) {
+        if (ai.gemini === 'ready') {
+          gDot.classList.add('active');
+          gLab.textContent = 'Gemini 1.5 Online';
+        } else {
+          gDot.classList.remove('active');
+          gLab.textContent = 'Gemini Local Fallback';
+        }
       }
-      el.innerHTML = jobs.slice(0, 12).map(j => `
-        <div class="job-row">
-          <span class="job-type">${j.type}</span>
-          <span class="job-name">${j.id.slice(0, 8)}…</span>
-          <span class="job-status ${j.status}">${j.status}</span>
-          <span class="job-time">${timeAgo(j.created_at)}</span>
-        </div>
-      `).join('');
-    } catch {}
+
+      // 2. YOLO
+      const yDot = document.getElementById('yolo-dot');
+      const yLab = document.getElementById('yolo-label');
+      if (yDot && yLab) {
+        if (ai.yolo === 'ready') {
+          yDot.classList.add('active');
+          yLab.textContent = 'YOLOv8 Precise';
+        } else {
+          yDot.classList.remove('active');
+          yLab.textContent = 'YOLOv8 Unavailable';
+        }
+      }
+
+      // 3. Jobs Status (already fetched in the 'ai' call above)
+      const active = ai.active_jobs || 0;
+      const jDot = document.getElementById('jobs-count-dot');
+      const jLab = document.getElementById('v-jobs-header');
+      if (jDot) {
+        if (active > 0) jDot.classList.add('active');
+        else jDot.classList.remove('active');
+      }
+      if (jLab) jLab.textContent = `${active} Jobs`;
+
+      // 4. Update recent jobs list if we are on dashboard
+      if (Router.currentPage === 'dashboard') {
+          this.renderJobsList(ai.recent_jobs || []);
+      }
+
+    } catch (e) { console.warn("Status fail", e); }
+  },
+
+  renderJobsList(jobs) {
+    const el = document.getElementById('recent-jobs-list');
+    if (!el) return;
+    if (!jobs.length) {
+      el.innerHTML = '<div class="empty-state">No jobs run yet.</div>';
+      return;
+    }
+    el.innerHTML = jobs.slice(0, 12).map(j => `
+      <div class="job-row">
+        <span class="job-type">${j.type}</span>
+        <span class="job-name">${j.id.slice(0, 8)}…</span>
+        <span class="job-status ${j.status}">${j.status}</span>
+        <span class="job-time">${timeAgo(j.created_at)}</span>
+      </div>
+    `).join('');
+  },
+
+  async refreshStats() {
+    try {
+      const s = await fetch(`${API}/api/stats`).then(r => r.json());
+      const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val !== undefined ? val : '—';
+      };
+      setVal('v-clips',   s.clips);
+      setVal('v-frames',  s.frames);
+      setVal('v-reports', s.reports);
+      setVal('v-jobs',    s.jobs);
+    } catch (e) { console.warn("Stats fail", e); }
   },
 
   async refreshAll() {
     await Promise.all([
-      this.refreshStatus(), 
+      this.refreshStatus(),
+      this.refreshStats(), 
       this.refreshDB(), 
-      this.refreshJobs(),
       this.updateTargetClips(),
       this.loadDiscoveryResults()
     ]);
@@ -557,7 +599,7 @@ const App = {
       return `
         <tr class="${rowCls}">
           <td>${f.suspect_time_fmt}</td>
-          <td>${dhChip(f.hamming_distance)}</td>
+          <td>${dhChip(f.hamming_distance, f.similarity_score)}</td>
           <td>${f.is_match ? '✓' : '—'}</td>
           <td>${f.matched_clip || '—'}</td>
           <td>${logo}</td>
@@ -686,6 +728,18 @@ const App = {
 
   // ── Reports ───────────────────────────────────────────────────
 
+  async clearReports() {
+    if (!confirm('Are you sure you want to delete ALL scan reports? This cannot be undone.')) return;
+    try {
+      await fetch(`${API}/api/reports`, { method: 'DELETE' });
+      Toast.show('All reports cleared.', 'info');
+      this.loadReports();
+      this.refreshStatus();
+    } catch (e) {
+      Toast.show('Failed to clear reports.', 'error');
+    }
+  },
+
   async loadReports() {
     const grid = document.getElementById('reports-grid');
     grid.innerHTML = '<div class="empty-state" style="padding:3rem">Loading…</div>';
@@ -701,7 +755,7 @@ const App = {
         const color = scoreColor(pct);
         const date  = r.generated ? new Date(r.generated).toLocaleString() : '';
         return `
-          <div class="report-card" onclick="App.openReport('${r.filename}')">
+          <div class="report-card" data-filename="${r.filename.replace(/"/g, '&quot;')}" onclick="App.openReport(this.getAttribute('data-filename'))">
             <div class="report-card-title">${r.suspect}</div>
             <div class="report-card-verdict">${r.verdict}</div>
             <div class="report-card-meta">
@@ -728,7 +782,7 @@ const App = {
     modal.style.display = 'flex';
 
     try {
-      const data = await fetch(`${API}/api/reports/${filename}`).then(r => r.json());
+      const data = await fetch(`${API}/api/reports/${encodeURIComponent(filename)}`).then(r => r.json());
       title.textContent = data.suspect_video;
       const pct   = data.similarity_percentage;
       const color = scoreColor(pct);
@@ -751,12 +805,24 @@ const App = {
 
       body.innerHTML = `
         ${complianceHtml}
-        <div class="verdict-meta" style="margin-bottom:16px;gap:10px;display:flex;flex-wrap:wrap;">
+        <div class="verdict-meta" style="margin-bottom:16px;gap:10px;display:flex;flex-wrap:wrap;align-items:center;">
           <span class="verdict-chip">Similarity: <strong style="color:${color}">${pct}%</strong></span>
           <span class="verdict-chip">Frames: ${data.matched_frames}/${data.total_frames_checked}</span>
           <span class="verdict-chip">Logo confirms: ${logo}</span>
           <span class="verdict-chip">${new Date(data.generated_at).toLocaleString()}</span>
+          
+          <div style="margin-left:auto; display:flex; gap:8px;">
+            <button class="btn btn-primary btn-sm" data-filename="${filename.replace(/"/g, '&quot;')}" onclick="App.analyzeReport(this.getAttribute('data-filename'))" id="btn-analyze" style="background:var(--purple); color:#fff; border:none;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="margin-right:6px"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+              Deep AI Analysis
+            </button>
+            <a href="${API}/api/reports/${encodeURIComponent(filename)}/dmca" class="btn-action">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14" style="vertical-align:middle;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              DMCA Notice
+            </a>
+          </div>
         </div>
+        <div id="analysis-container"></div>
         <div style="font-size:15px;font-weight:700;color:${color};margin-bottom:20px;">${data.verdict}</div>
         <div class="table-wrap">
           <table class="frame-table">
@@ -776,7 +842,7 @@ const App = {
                 return `
                   <tr class="${rowCls}">
                     <td>${f.suspect_time_fmt}</td>
-                    <td>${dhChip(f.hamming_distance)}</td>
+                    <td>${dhChip(f.hamming_distance, f.similarity_score)}</td>
                     <td>${f.is_match ? '✓' : '—'}</td>
                     <td>${f.matched_clip || '—'}</td>
                     <td>${logo}</td>
@@ -790,6 +856,45 @@ const App = {
       `;
     } catch {
       body.innerHTML = '<div class="empty-state">Failed to load report.</div>';
+    }
+  },
+
+  async analyzeReport(filename) {
+    const btn = document.getElementById('btn-analyze');
+    const container = document.getElementById('analysis-container');
+    
+    btn.disabled = true;
+    btn.textContent = 'Analyzing...';
+    container.innerHTML = '<div class="empty-state">Gemini is processing the report evidence...</div>';
+
+    try {
+      const response = await fetch(`${API}/api/reports/${encodeURIComponent(filename)}/analyze`, { method: 'POST' });
+      if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.error || `Server error ${response.status}`);
+      }
+      const res = await response.json();
+      
+      container.innerHTML = `
+        <div class="analysis-box">
+          <div class="analysis-header">
+            <div class="analysis-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+              AI Insights
+            </div>
+            <div class="analysis-model">Powered by ${res.model}</div>
+          </div>
+          <div class="analysis-text">${res.analysis}</div>
+        </div>
+      `;
+      btn.style.display = 'none';
+      Toast.show('AI Analysis Complete', 'success');
+    } catch (e) {
+      console.error('Analysis error:', e);
+      Toast.show(`AI analysis failed: ${e.message}`, 'error');
+      btn.disabled = false;
+      btn.textContent = 'Deep AI Analysis';
+      container.innerHTML = `<div class="empty-state" style="color:var(--red)">Analysis failed: ${e.message}. Please try again later.</div>`;
     }
   },
 
@@ -816,9 +921,16 @@ const App = {
     scanThSlider.addEventListener('input',  () => scanThLabel.textContent   = scanThSlider.value);
     scanIntSlider.addEventListener('input', () => scanIntLabel.textContent  = `${scanIntSlider.value}s`);
 
-    // Keyboard: Escape to close modal
+    // Keyboard: Escape to close modal, and Quick Nav
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape') this.closeModal({ target: document.getElementById('report-modal') });
+      
+      // Alt + 1-5 for quick navigation
+      if (e.altKey && e.key === '1') Router.navigate('dashboard');
+      if (e.altKey && e.key === '2') Router.navigate('ingest');
+      if (e.altKey && e.key === '3') Router.navigate('autoingest');
+      if (e.altKey && e.key === '4') Router.navigate('scan');
+      if (e.altKey && e.key === '5') Router.navigate('reports');
     });
 
     // Auto-refresh dashboard every 10s
@@ -827,6 +939,9 @@ const App = {
     }, 10000);
 
     // Initial load
+    const savedCollapsed = localStorage.getItem('dap_sidebar_collapsed') === 'true';
+    if (savedCollapsed) document.getElementById('sidebar').classList.add('collapsed');
+
     this.refreshAll();
   },
 
@@ -846,6 +961,13 @@ const App = {
     } catch (e) {
       console.warn('Failed to update target clips dropdown');
     }
+  },
+
+  toggleSidebar() {
+    const sb = document.getElementById('sidebar');
+    sb.classList.toggle('collapsed');
+    const isCollapsed = sb.classList.contains('collapsed');
+    localStorage.setItem('dap_sidebar_collapsed', isCollapsed);
   }
 };
 

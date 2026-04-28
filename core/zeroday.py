@@ -161,7 +161,12 @@ class ZeroDayMonitor:
 
                 hashes = self.hash_fn(str(filepath), self.interval_sec)
                 title = video["title"]
-                self.storage.save_hashes(title, hashes)
+                
+                # Push vectors to Qdrant
+                from .qdrant_store import QdrantStore
+                qdrant = QdrantStore()
+                qdrant.insert_hashes(title, hashes)
+                
                 self._emit(
                     "progress",
                     f"0-Day: ✓ Hashed & stored '{title}' ({len(hashes)} frames)",

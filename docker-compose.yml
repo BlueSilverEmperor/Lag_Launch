@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: dap-mongodb
+    expose:
+      - "27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: dap-qdrant
+    expose:
+      - "6333"
+    volumes:
+      - qdrant-data:/qdrant/storage
+
+  dap-app:
+    build: .
+    container_name: dap-app
+    ports:
+      - "9000:9000"
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/
+      - QDRANT_HOST=qdrant
+      - RUN_MODE=DOCKER
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-MOCK}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    restart: always
+
+  tunnel:
+    image: node:18-slim
+    container_name: dap-tunnel
+    command: npx localtunnel --port 9000 --local-host dap-app --subdomain dap-laglaunch
+    depends_on:
+      - dap-app
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    restart: always
+volumes:
+  mongo-data:
+  qdrant-data:

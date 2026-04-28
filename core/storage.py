@@ -12,9 +12,34 @@ from typing import Any, Dict, List, Optional
 from pymongo import MongoClient, DESCENDING, UpdateOne
 
 class MongoStorage:
-    def __init__(self, uri="mongodb://localhost:27017/", database="dap_db"):
-        self.client = MongoClient(uri)
+    def __init__(self, uri=None, database="dap_db"):
+        import os
+        import time
+        from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
+        
+        actual_uri = uri or os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+        
+        # Implement retry logic for Docker startup resiliency
+        max_retries = 5
+        retry_delay = 2
+        
+        for attempt in range(max_retries):
+            try:
+                self.client = MongoClient(actual_uri, serverSelectionTimeoutMS=5000)
+                # Force a connection check
+                self.client.admin.command('ping')
+                print(f"DEBUG: MongoDB connected successfully on attempt {attempt + 1}")
+                break
+            except (ConnectionFailure, ServerSelectionTimeoutError) as e:
+                if attempt == max_retries - 1:
+                    print(f"ERROR: Could not connect to MongoDB after {max_retries} attempts.")
+                    raise e
+                print(f"DEBUG: MongoDB not ready (attempt {attempt + 1}/{max_retries}), retrying in {retry_delay}s...")
+                time.sleep(retry_delay)
+                retry_delay *= 2
+
         self.db = self.client[database]
+
         
         # Collections
         self.clips = self.db["clips"]
@@ -173,6 +198,20 @@ class MongoStorage:
 
     def get_report_count(self) -> int:
         return self.reports.count_documents({})
+
+    def clear_all_reports(self):
+        """Delete all generated scan reports."""
+        self.reports.delete_many({})
+
+    def update_report_feedback(self, filename: str, verdict_auth: bool):
+        """Human-in-the-loop feedback to override false positives."""
+        self.reports.update_one(
+            {"report_filename": filename},
+            {"$set": {
+                "human_feedback": "AUTHORIZED" if verdict_auth else "CONFIRMED_PIRACY",
+                "feedback_at": datetime.datetime.now()
+            }}
+        )
 
     # --- Authorized Publishers ---
     def add_authorized_publisher(self, name: str, platform: str, channel_url: str = ""):

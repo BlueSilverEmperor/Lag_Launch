@@ -1,126 +1,76 @@
-# Digital Asset Protection System (DAP)
+# WRAITH — Cloud Edition
 
-An AI-driven **Digital Asset Protection** system for detecting unauthorized use of sports media content using **Perceptual Hashing (pHash)** and **YOLOv8 object detection**.
+A production-grade, AI-driven **WRAITH** engine for detecting unauthorized media distribution. This version is **Cloud Ready** and optimized for deployment on Google Cloud Platform (GCP).
 
 ---
 
-## Architecture
+## 🚀 Cloud-Ready Features
+
+- **Multi-Vector Search**: Powered by **Qdrant** for high-speed semantic frame matching.
+- **Persistent Metadata**: Built on **MongoDB** for robust job and report tracking.
+- **AI Abstraction Layer**: Native support for **Google Gemini** (Vertex AI) with local fallback.
+- **Containerized**: One-click deployment via **Docker** and **Docker Compose**.
+- **Real-time Monitoring**: Glassmorphic web dashboard with Server-Sent Events (SSE).
+
+---
+
+## 🛠 Tech Stack
+
+| Component | Technology |
+| :--- | :--- |
+| **Backend** | Python 3.13, Flask (Async) |
+| **Vector DB** | Qdrant (CLIP Embeddings) |
+| **Metadata DB** | MongoDB |
+| **AI (LLM/Vision)** | Google Gemini / DeepSeek-R1 |
+| **Visual Verification** | Ultralytics YOLOv8 |
+| **Web UI** | Vanilla JS, CSS3 (Glassmorphism) |
+
+---
+
+## 🏗 Installation & Local Setup
+
+### Using Docker (Recommended)
+This replicates the cloud environment locally.
+
+```bash
+docker-compose up --build
+```
+The dashboard will be available at `http://localhost:9000`.
+
+### Native Setup
+1. **Dependencies**: `pip install -r requirements.txt`
+2. **Databases**: Ensure MongoDB and Qdrant are running locally.
+3. **Run**: `python server_reloaded.py`
+
+---
+
+## ☁️ Google Cloud Integration
+
+This system is designed to satisfy requirements for **Google AI** and **Cloud Deployment**.
+
+### 1. Requirements Checklist
+- [x] **Cloud Deployment**: Supported via `Dockerfile` and Cloud Run configuration.
+- [x] **Google AI Service**: Integrated via `core/ai_engine.py` (Gemini Provider).
+
+### 2. Enabling Gemini
+Set the following environment variable to switch from Local Fallback to Google AI:
+```bash
+export GOOGLE_API_KEY="your_api_key_here"
+```
+
+---
+
+## 📂 Architecture
 
 ```
 Asset Protection/
 ├── core/
-│   ├── hasher.py      # Keyframe extraction + pHash (OpenCV + imagehash)
-│   ├── detector.py    # Hamming distance comparison engine
-│   └── verifier.py    # YOLOv8 logo/watermark detection
-├── pipeline/
-│   ├── ingestor.py    # Phase 1 — Ingest directories of official clips
-│   ├── monitor.py     # Phase 2/3 — Web crawler simulation + AI verification
-│   └── reporter.py    # Phase 4 — Generate terminal + JSON reports
-├── data/
-│   └── hash_db.json   # Persistent hash database (auto-created)
-├── reports/           # JSON report output directory
-├── main.py            # CLI entry point
-└── requirements.txt
+│   ├── ai_engine.py   # Google Gemini / Local AI Abstraction [NEW]
+│   ├── qdrant_store.py# Vector Search logic
+│   ├── storage.py     # MongoDB persistence
+│   └── detector.py    # Fingerprinting engine
+├── Dockerfile         # Cloud Platform build file [NEW]
+├── docker-compose.yml # Orchestration [NEW]
+├── server_reloaded.py # Flask API + SSE Workers
+└── static/            # Glassmorphic Web Dashboard
 ```
-
----
-
-## Installation
-
-```bash
-pip install -r requirements.txt
-```
-
-> YOLOv8 weights (`yolov8n.pt`) are downloaded automatically on first use.
-
----
-
-## How It Works
-
-### The Math
-
-```
-Hash_Original = 11001010 10110101 ...   (256-bit pHash)
-Hash_Pirated  = 11001011 10110101 ...
-
-Hamming Distance (D_H) = count of differing bits
-
-D_H ≈ 0          →  Direct copy
-0 < D_H < 8      →  Modified version (re-encoded / resized)
-D_H ≥ 8          →  Likely different content
-```
-
-### Pipeline Phases
-
-| Phase | Module | Description |
-|---|---|---|
-| 1 — Ingestion | `ingestor.py` | Hash all official clips → `hash_db.json` |
-| 2 — Detection | `monitor.py` | Extract + compare suspect frames (Hamming) |
-| 3 — Verification | `verifier.py` | YOLOv8 logo/watermark check on matched frames |
-| 4 — Reporting | `reporter.py` | Rich terminal table + JSON report |
-
----
-
-## Usage
-
-### Phase 1 — Ingest official clips
-
-```bash
-python main.py ingest --clips-dir ./official_clips
-```
-
-Hashes every video in the folder and stores fingerprints in `data/hash_db.json`.
-
-### Phase 2-4 — Scan a suspect video
-
-```bash
-python main.py scan --suspect ./pirated_video.mp4
-```
-
-Compares the suspect video against the database, runs YOLO on matches, and outputs a full report.
-
-### Full Pipeline (Ingest + Scan)
-
-```bash
-python main.py full --clips-dir ./official_clips --suspect ./pirated_video.mp4
-```
-
-### Options
-
-| Flag | Default | Description |
-|---|---|---|
-| `--threshold N` | `8` | Hamming distance cutoff for a match |
-| `--interval SEC` | `2.0` | Seconds between sampled keyframes |
-| `--db PATH` | `data/hash_db.json` | Hash database location |
-| `--no-yolo` | off | Skip YOLOv8 verification (faster) |
-| `--yolo-model` | `yolov8n.pt` | YOLO weights file |
-| `--overwrite` | off | Re-hash clips already in the database |
-
----
-
-## Sample Output
-
-```
-Phase 4 — Similarity Report
-┌─────────────┬──────────┬─────────────────┬────────────┬───────────────┬──────────────────────────┐
-│ Suspect Time│ Best D_H │ Matched Clip     │ Match Time │ Logo Detected │ Flag Status              │
-├─────────────┼──────────┼─────────────────┼────────────┼───────────────┼──────────────────────────┤
-│   00:02     │    2     │ match_v1.mp4     │   00:02    │ YES (78%)     │ 🚨 CONFIRMED INFRINGEMENT│
-│   00:04     │    3     │ match_v1.mp4     │   00:04    │ YES (81%)     │ 🚨 CONFIRMED INFRINGEMENT│
-│   00:06     │   14     │ other_clip.mp4   │   00:10    │ No            │ ✅ CLEAR                 │
-└─────────────┴──────────┴─────────────────┴────────────┴───────────────┴──────────────────────────┘
-
- Similarity Score:  66.67%
- VERDICT:           MODERATE SIMILARITY — Possible Modified Copy
-```
-
----
-
-## Verdict Thresholds
-
-| Similarity % | Verdict |
-|---|---|
-| ≥ 80% | HIGH SIMILARITY — Likely Unauthorized Copy |
-| 40–79% | MODERATE SIMILARITY — Possible Modified Copy |
-| 10–39% | LOW SIMILARITY — Minor Overlap Detected |
-| < 10% | NO SIGNIFICANT MATCH — Content Appears Original |

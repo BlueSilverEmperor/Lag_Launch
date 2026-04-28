@@ -1,49 +1,50 @@
-# Digital Asset Protection (DAP) System
+# WRAITH — Asset Protection System
 
-The DAP System is a highly sophisticated, multimodal AI engine designed to proactively detect, verify, and document unauthorized media distribution (piracy) across the internet.
+**WRAITH** is a premium, multimodal AI intelligence platform designed to proactively detect, verify, and dismantle unauthorized media distribution (piracy) across the global digital landscape.
 
 ---
 
 ## 🛠 Tech Stack
 
 ### Backend Environment 
-- **Language**: Python 3.13
-- **Server Framework**: Flask (REST architecture with Server-Sent Events for real-time logs)
-- **Database**: MongoDB (via `pymongo`) for fast, persistent hash lookups and tracking discovery tables.
-- **Media Processing**: `opencv-python` (Frame extraction, preprocessing), `yt-dlp` (Stream hydration & video downloading), `imagehash` (Perceptual Hashing)
-- **Crawlers**: `httpx`, `asyncio`, and `BeautifulSoup4`
+- **Core Platform**: Python 3.13
+- **Server Framework**: Flask (High-concurrency REST architecture with Server-Sent Events)
+- **Database Architecture**: 
+  - **MongoDB**: Primary persistent store for video fingerprints (pHash), discovery metadata, and job tracking.
+  - **Qdrant**: Vector storage capability for high-dimensional semantic search.
+- **Media Pipeline**: `opencv-python` (Temporal frame extraction), `yt-dlp` (Stream hydration & multi-platform recovery), `imagehash` (Perceptual Hashing)
+- **Engineered Crawlers**: Resilient, multi-platform scrapers using `httpx`, `asyncio`, and rotating User-Agents.
 
-### AI & Neural Layers
-- **Core Reasoning Engine**: `deepseek-r1:7b` (Via Ollama/LangChain) - Used for precise metadata topic clustering and analyzing rights compliance.
-- **Visual Intelligence**: `llava` - Used to parse out spatial descriptions of individual video frames.
-- **Verification Detection**: `ultralytics` (YOLOv8) - High-speed logo and specific object detection used strictly for verifying brand presence in infringing clips.
+### AI & Intelligence Layers
+- **Semantic Reasoning**: `deepseek-r1:7b` — Orthogonal query generation and rights compliance synthesis.
+- **Visual Cognition**: `llava` — Frame-level spatial analysis and logo/brand identification.
+- **Neural Verification**: `ultralytics` (YOLOv8) — Specialized object detection for verifying brand watermarks in pirate streams.
 
-### Frontend Dashboard
-- **Technologies**: Vanilla HTML5, CSS3, JavaScript.
-- **Aesthetics**: Glassmorphic, dark-mode, minimalist design featuring robust client-side event listeners processing SSE logs in real-time.
+### Visual Identity & UX
+- **Design System**: **Wraith Dark-Glassmorphism** — A premium, high-impact aesthetic prioritizing depth and clarity.
+- **Ambient Intelligence**: Features "Wraith Orbs" — a move-reactive background animation that interacts with the glass tiles.
+- **Navigation**: Sidebar-centric layout featuring dual-state branding (Page Icon 2 for expanded utility, Min-Logo for ultra-minimalist focus).
 
 ---
 
 ## 🚀 Core Workflows
 
-### 1. Ingestion & Preemptive Defense (0-Day Monitor)
-- **Watchdog**: The system runs a persistent background loop (`ZeroDayMonitor`) tracking defined authorized channels (e.g., ESPN, Real Madrid Official).
-- **Auto-Ingestion**: When a new video uploads, the system downloads it, processes it, and generates perceptual hashes (`phash`) while explicitly cropping out black-boxes to ensure aspect-ratio immunity.
-- **Persistent Knowledge**: Hashes are instantly pushed to MongoDB, securing a fingerprint before pirates can react.
+### 1. Ingestion & Preemptive Defense
+- **Zero-Day Monitoring**: Persistent background watchers track authorized source channels (e.g., ESPN, HBO, Official Leagues).
+- **Proactive Fingerprinting**: New content is automatically downloaded and hashed. WRAITH uses **Black-Box Cropping** to ensure fingerprint immunity against letterboxing evasion tactics.
+- **Encrypted Knowledge Base**: Hashes are instantly pushed to MongoDB, creating an immutable reference before piracy begins.
 
-### 2. Proactive Piracy Discovery
-- **Topic Extraction**: DeepSeek-R1 analyzes the ingested video and extracts 2-3 precise search query topics (e.g., *Real Madrid Champions League Highlights*).
-- **Topic Memory Cache**: Extracted topics are checked against an active memory buffer to prevent duplicate queries and rate limits.
-- **Parallel Crawl**: The engine concurrently searches **14 domains** (including DuckDuckGo, YouTube, Telegram, VK, TikTok, Reddit, Rumble) utilizing User-Agent rotation and Semaphore batching.
-- **Smart Partitioning**: Discovered suspect URLs are grouped in MongoDB explicitly under the *Original Asset* that spawned the hunt, making it easy to track the blast radius of a specific video.
+### 2. Autonomous Piracy Discovery
+- **Query Synthesis**: DeepSeek-R1 analyzes the source metadata to generate high-precision search payloads.
+- **Global Mesh Search**: The discovery engine concurrently crawls **14+ domains** (including Telegram, VK, TikTok, Reddit, and private forums) using semaphore-controlled parallel batches.
+- **Asset Grouping**: Every discovered URL is intelligently clustered under its parent asset, allowing for "Blast Radius" visualization of a specific leak.
 
-### 3. Deep Scanning & Temporal Fingerprinting
-If a suspect link is targeted for a direct scan:
-- **Speed Invariant Check**: The comparator evaluates hashes assuming the clip might have been sped up or slowed down by `±10%` to evade basic detections.
-- **Overlay Tolerant**: The matching threshold dynamic adjusts to allow passing scores on videos with meme captions or minor overlays.
-- **Temporal Window**: A single matched frame is discarded as noise. The engine strictly requires sequential matches grouped across time to confidently declare an infringement.
+### 3. Temporal Scanning & Verification
+- **Speed & Aspect Invariance**: The scanning engine compensates for piracy tactics like `±15%` playback speed manipulation and zoom/crop overlays.
+- **Sequential Verification**: WRAITH rejects single-frame false positives, requiring a "Temporal Match Window" to confirm identity.
+- **Neural Confirmation**: YOLOv8 scans infringing snippets for original brand watermarks to provide secondary visual proof of source.
 
-### 4. AI Compliance & Final Reporting 
-- **Multimodal Evaluation**: The suspect video's platform reputation (subscriber counts, verification checks) is piped into DeepSeek-R1 alongside the visual topic contexts. 
-- **Rights Gatekeeper**: If the uploader is known in the Authorized Lists or logically deduced as safe, they are passed. Otherwise, they are heavily flagged.
-- **Report Generation**: A cohesive file structure is output tracking the Hamming distances of specific timestamps, combining YOLOv8's "Logo confirmation" check with the AI's "Infringement status" in one dashboard.
+### 4. AI Compliance & Action Center 
+- **Multimodal Compliance**: Synthetic evaluation of uploader reputation, metadata context, and visual verification results.
+- **Action Inversion**: Verified infringements are surfaced in the Reports Center with one-click DMCA action packages.
+- **Integrated AI Insights**: Every report includes a real-time "AI Insight" generated by DeepSeek-R1, explaining the reasoning behind the infringement verdict.

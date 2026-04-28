@@ -1,43 +1,46 @@
 """
 core/detector.py
 ----------------
-Similarity Detection Engine (Phase 2).
+Phase 2: Semantic Similarity Engine via Qdrant & CLIP Embeddings.
 
-Compares suspect video frames against the stored hash database and
-returns per-frame match results, including the best-match clip,
-timestamp, Hamming distance, and a match/no-match flag.
+Compares suspect video frame embeddings against the Qdrant vector database,
+implementing expanded playback speed invariance (0.75x, 0.9x, 1.1x, 1.25x, 1.5x)
+and timeline verification.
 """
 
 from __future__ import annotations
 
-import json
+import numpy as np
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Optional
 
-from .hasher import hamming_distance
-
+from .qdrant_store import QdrantStore
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
-MATCH_THRESHOLD: int = 8          # D_H < threshold → frame is a match
-SPEED_FACTORS: list = [0.9, 1.0, 1.1]  # ±10% speed variation trials
+# Cosine similarity threshold (1.0 = exact match).
+# CLIP embeddings usually hover around 0.3 for unrelated, >0.85 for same content.
+MATCH_THRESHOLD_COSINE: float = 0.85 
+
+# Extended playback variance to catch extreme speedup/slowdown piracy
+SPEED_FACTORS: list[float] = [0.75, 0.9, 1.0, 1.1, 1.25, 1.5]
+
 TEMPORAL_WINDOW: int = 3          # Consecutive frames needed for strong match
-OVERLAY_THRESHOLD_BOOST: int = 3  # Extra tolerance for frames with overlays
+OVERLAY_THRESHOLD_TOLERANCE: float = 0.05  # Deduct from threshold if overlays are expected
 
 
 # ─── Data Classes ─────────────────────────────────────────────────────────────
 
 @dataclass
 class FrameMatchResult:
-    """Result of comparing one suspect frame against the entire hash DB."""
-    suspect_timestamp: float      # Seconds into the suspect video
-    suspect_hash: str             # Hex pHash of the suspect frame
+    """Result of comparing one suspect frame against the entire vector DB."""
+    suspect_timestamp: float      
+    suspect_embedding: Optional[np.ndarray] = field(default=None, repr=False)
 
-    is_match: bool = False        # True if D_H < threshold
-    best_distance: int = 999      # Lowest Hamming distance found
-    matched_clip: Optional[str] = None          # Source clip name
-    matched_timestamp: Optional[float] = None   # Matching timestamp in source
+    is_match: bool = False        
+    best_similarity: float = 0.0  # Cosine similarity (higher is better)
+    matched_clip: Optional[str] = None          
+    matched_timestamp: Optional[float] = None   
 
 
 @dataclass
@@ -50,7 +53,6 @@ class SimilarityReport:
 
     @property
     def similarity_percentage(self) -> float:
-        """Percentage of suspect frames that matched at least one source frame."""
         if self.total_frames_checked == 0:
             return 0.0
         return round((self.matched_frames / self.total_frames_checked) * 100, 2)
@@ -67,209 +69,114 @@ class SimilarityReport:
         else:
             return "NO SIGNIFICANT MATCH — Content Appears Original"
 
+def _cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
+    # CLIP vectors are naturally dense, normalize to get cosine similarity natively via dot
+    na = np.linalg.norm(a)
+    nb = np.linalg.norm(b)
+    if na == 0 or nb == 0: return 0.0
+    return float(np.dot(a, b) / (na * nb))
 
 # ─── Public API ───────────────────────────────────────────────────────────────
 
-def load_hash_db(db_path: str | Path) -> dict:
-    """Load the hash database from a JSON file."""
-    db_path = Path(db_path)
-    if not db_path.exists():
-        return {}
-    with open(db_path, "r") as f:
-        return json.load(f)
-
-
-def compare_frame(
-    suspect_timestamp: float,
-    suspect_hash: str,
-    hash_db: dict,
-    threshold: int = MATCH_THRESHOLD
-) -> FrameMatchResult:
-    """
-    Compare a single suspect frame hash against the entire hash database.
-
-    Iterates over every stored clip and every stored timestamp, computes
-    the Hamming Distance (D_H), and keeps the best (lowest) match.
-
-    Parameters
-    ----------
-    suspect_timestamp : Timestamp (seconds) of the frame in the suspect video.
-    suspect_hash      : Hex pHash string of the suspect frame.
-    hash_db           : {clip_name: {timestamp_str: hash_hex}} dict.
-    threshold         : D_H must be below this to count as a match.
-
-    Returns
-    -------
-    FrameMatchResult populated with match details.
-    """
-    result = FrameMatchResult(
-        suspect_timestamp=suspect_timestamp,
-        suspect_hash=suspect_hash,
-    )
-
-    for clip_name, frame_hashes in hash_db.items():
-        for ts_str, ref_hash in frame_hashes.items():
-            try:
-                dist = hamming_distance(suspect_hash, ref_hash)
-            except Exception:
-                continue
-
-            if dist < result.best_distance:
-                result.best_distance = dist
-                result.matched_clip = clip_name
-                result.matched_timestamp = float(ts_str)
-
-    if result.best_distance < threshold:
-        result.is_match = True
-
-    return result
-
-
 def scan_suspect_video(
-    suspect_hashes: dict[str, str],
+    suspect_hashes: dict[str, np.ndarray],
     suspect_video_name: str,
-    hash_db: dict,
-    threshold: int = MATCH_THRESHOLD,
+    qdrant: QdrantStore,
+    threshold: float = MATCH_THRESHOLD_COSINE,
 ) -> SimilarityReport:
-    """
-    Scan all keyframe hashes from a suspect video against the hash database.
+    """Legacy backward compatible scan without speed invariance."""
+    return scan_suspect_video_advanced(suspect_hashes, suspect_video_name, qdrant, threshold, speed_invariant=False, temporal_check=False)
 
-    Parameters
-    ----------
-    suspect_hashes     : {timestamp_str: hash_hex} from the suspect video.
-    suspect_video_name : Human-readable name / path of the suspect video.
-    hash_db            : The persistent hash database dict.
-    threshold          : Hamming distance threshold for a positive match.
-
-    Returns
-    -------
-    A fully-populated SimilarityReport.
-    """
-    report = SimilarityReport(
-        suspect_video=suspect_video_name,
-        total_frames_checked=len(suspect_hashes),
-    )
-
-    for ts_str, s_hash in suspect_hashes.items():
-        frame_result = compare_frame(
-            suspect_timestamp=float(ts_str),
-            suspect_hash=s_hash,
-            hash_db=hash_db,
-            threshold=threshold,
-        )
-        report.frame_results.append(frame_result)
-        if frame_result.is_match:
-            report.matched_frames += 1
-
-    return report
-
-
-# ─── Advanced Scan with Speed-Invariance & Temporal Check ─────────────────────
 
 def scan_suspect_video_advanced(
-    suspect_hashes: dict[str, str],
+    suspect_hashes: dict[str, np.ndarray],
     suspect_video_name: str,
-    hash_db: dict,
-    threshold: int = MATCH_THRESHOLD,
+    qdrant: QdrantStore,
+    target_clip: str = None,
+    threshold: float = MATCH_THRESHOLD_COSINE,
     speed_invariant: bool = True,
     temporal_check: bool = True,
     overlay_tolerance: bool = True,
 ) -> SimilarityReport:
     """
-    Enhanced scan with:
-    - Speed-invariant matching (±10% playback speed compensation)
-    - Temporal window validation (requires N consecutive frames to match)
-    - Overlay-tolerant threshold (slightly relaxed for frames with meme text/logo)
+    Enhanced scan with Vector DB Cosine matching, Speed-invariance on timelines, 
+    and Temporal checking.
     """
     report = SimilarityReport(
         suspect_video=suspect_video_name,
         total_frames_checked=len(suspect_hashes),
     )
 
-    # Sort timestamps so temporal window check works correctly
     sorted_items = sorted(suspect_hashes.items(), key=lambda x: float(x[0]))
-
-    # Build a multi-speed version of the hash_db keys for speed-invariant lookup
-    # We pre-index the DB frames by clip for fast adjacent timestamp lookup
-    clip_ts_index: dict[str, list[tuple[float, str]]] = {}
-    for clip_name, frame_hashes in hash_db.items():
-        clip_ts_index[clip_name] = sorted(
-            [(float(ts), h) for ts, h in frame_hashes.items()],
-            key=lambda x: x[0]
-        )
-
     raw_results: list[FrameMatchResult] = []
 
-    for ts_str, s_hash in sorted_items:
+    # Cache fetched clip timelines to avoid hammering Qdrant
+    cached_clip_timelines: dict[str, list[tuple[float, np.ndarray]]] = {}
+
+    for ts_str, embedding in sorted_items:
         suspect_ts = float(ts_str)
+        result = FrameMatchResult(suspect_timestamp=suspect_ts, suspect_embedding=embedding)
+        
+        # 1. Broad Vector Search
+        matches = qdrant.search_frame(embedding, limit=5)
+        
+        if target_clip:
+            matches = [m for m in matches if m["clip_name"] == target_clip]
+            
+        if matches:
+            best = matches[0]
+            result.best_similarity = best["score"]
+            result.matched_clip = best["clip_name"]
+            result.matched_timestamp = best["timestamp"]
 
-        # Try multiple effective thresholds: normal + overlay-boosted
-        thresholds_to_try = [threshold]
-        if overlay_tolerance:
-            thresholds_to_try.append(threshold + OVERLAY_THRESHOLD_BOOST)
-
-        best_result = FrameMatchResult(
-            suspect_timestamp=suspect_ts,
-            suspect_hash=s_hash,
-        )
-
-        for clip_name, ts_list in clip_ts_index.items():
-            if not ts_list:
-                continue
-
-            for ref_ts, ref_hash in ts_list:
-                try:
-                    dist = hamming_distance(s_hash, ref_hash)
-                except Exception:
-                    continue
-
-                if dist < best_result.best_distance:
-                    best_result.best_distance = dist
-                    best_result.matched_clip = clip_name
-                    best_result.matched_timestamp = ref_ts
-
-        # Apply speed-invariant search: also look up DB frames at ±10% timestamp
-        if speed_invariant and best_result.matched_clip:
-            clip_name = best_result.matched_clip
-            ts_list = clip_ts_index.get(clip_name, [])
+        # 2. Speed-Invariant Local Timeline Check
+        if speed_invariant and result.matched_clip:
+            clip_name = result.matched_clip
+            if clip_name not in cached_clip_timelines:
+                cached_clip_timelines[clip_name] = sorted(
+                    qdrant.get_clip_timestamps(clip_name),
+                    key=lambda x: x[0]
+                )
+                
+            ts_list = cached_clip_timelines[clip_name]
+            
+            # For each speed factor, compute the 'expected' timestamp in the source
             for factor in [f for f in SPEED_FACTORS if f != 1.0]:
                 adjusted_ts = suspect_ts * factor
-                # Find nearest DB frame to the speed-adjusted timestamp
-                nearest = min(
+                
+                # Find nearest DB frame to this adjusted timestamp using binary-ish search or min
+                if not ts_list: continue
+                nearest_ts, nearest_emb = min(
                     ts_list,
-                    key=lambda x: abs(x[0] - adjusted_ts),
-                    default=None
+                    key=lambda x: abs(x[0] - adjusted_ts)
                 )
-                if nearest:
-                    try:
-                        dist = hamming_distance(s_hash, nearest[1])
-                        if dist < best_result.best_distance:
-                            best_result.best_distance = dist
-                            best_result.matched_timestamp = nearest[0]
-                    except Exception:
-                        pass
+                
+                # Compute Similarity
+                sim = _cosine_sim(embedding, nearest_emb)
+                if sim > result.best_similarity:
+                    result.best_similarity = sim
+                    result.matched_timestamp = nearest_ts
 
-        # Determine match using the effective threshold
-        eff_threshold = threshold + OVERLAY_THRESHOLD_BOOST if overlay_tolerance else threshold
-        if best_result.best_distance < eff_threshold:
-            best_result.is_match = True
+        # 3. Apply Effective Threshold
+        eff_threshold = threshold - OVERLAY_THRESHOLD_TOLERANCE if overlay_tolerance else threshold
+        if result.best_similarity >= eff_threshold:
+            result.is_match = True
 
-        raw_results.append(best_result)
+        raw_results.append(result)
 
-    # Temporal window validation: require at least 2-of-3 consecutive frames to match
+    # 4. Temporal window validation (Noise Reduction)
     if temporal_check and len(raw_results) >= TEMPORAL_WINDOW:
         validated: list[FrameMatchResult] = []
         n = len(raw_results)
         for i, fr in enumerate(raw_results):
             if fr.is_match:
-                # Look at neighboring frames
                 window = raw_results[max(0, i-1):min(n, i+2)]
-                neighbour_matches = sum(1 for w in window if w.best_distance < threshold + OVERLAY_THRESHOLD_BOOST + 4)
-                # Require at least 1 other frame nearby to be a near-match
+                eff_threshold = threshold - OVERLAY_THRESHOLD_TOLERANCE - 0.1
+                neighbour_matches = sum(1 for w in window if w.best_similarity >= eff_threshold)
+                
                 if neighbour_matches >= 2:
                     validated.append(fr)
                 else:
-                    # Isolated single-frame match — downgrade to unmatched (noise filter)
                     fr.is_match = False
                     validated.append(fr)
             else:

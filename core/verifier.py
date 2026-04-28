@@ -21,7 +21,11 @@ from typing import Optional
 try:
     from ultralytics import YOLO
     YOLO_AVAILABLE = True
-except ImportError:
+except ImportError as e:
+    print(f"DEBUG: YOLOv8 Import Failed: {e}")
+    YOLO_AVAILABLE = False
+except Exception as e:
+    print(f"DEBUG: YOLOv8 Unexpected Error: {e}")
     YOLO_AVAILABLE = False
 
 

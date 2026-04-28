@@ -9,11 +9,14 @@ Usage
   python main.py
 """
 
-from server_reloaded import app, init_app
+from core.security import SecurityGatekeeper
+from server_reloaded import app
 
 if __name__ == "__main__":
+    # 1. Standard Security Verification
+    SecurityGatekeeper.verify()
+    
     print("  ╔══════════════════════════════════════════════╗")
     print("  ║  DAP Server v3.5m • http://127.0.0.1:9000    ║")
     print("  ╚══════════════════════════════════════════════╝\n")
-    init_app()
-    app.run(host="0.0.0.0", port=9000, debug=False, threaded=True)
+    app.run(host="127.0.0.1", port=9000, debug=False, threaded=True)

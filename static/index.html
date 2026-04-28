@@ -3,44 +3,37 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DAP — Digital Asset Protection</title>
+  <title>WRAITH — Digital Asset Protection</title>
   <meta name="description" content="AI-driven Digital Asset Protection system using pHash fingerprinting and YOLOv8 object detection to identify unauthorized media use." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/style.css" />
+  <link rel="icon" href="/assets/favicon.png" type="image/png">
 </head>
 <body>
 
 <!-- Animated grid background -->
 <canvas id="bg-canvas"></canvas>
 
+<!-- Wraith Orbs (Moving Background) -->
+<div class="orb-container">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+</div>
+
 <div class="app" id="app">
 
   <!-- ── Sidebar ──────────────────────────────────────────────── -->
   <aside class="sidebar" id="sidebar">
+    <button class="sidebar-toggle" id="sidebar-toggle" onclick="App.toggleSidebar()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" width="12" height="12"><path d="M15 19l-7-7 7-7"/></svg>
+    </button>
+
     <div class="sidebar-logo">
-      <div class="logo-icon">
-        <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="16" cy="16" r="14" stroke="url(#g1)" stroke-width="2"/>
-          <path d="M10 16 L14 20 L22 12" stroke="#00d4ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-          <circle cx="16" cy="16" r="5" fill="url(#g2)" opacity="0.3"/>
-          <defs>
-            <linearGradient id="g1" x1="0" y1="0" x2="32" y2="32">
-              <stop offset="0%" stop-color="#00d4ff"/>
-              <stop offset="100%" stop-color="#7b5ea7"/>
-            </linearGradient>
-            <linearGradient id="g2" x1="0" y1="0" x2="32" y2="32">
-              <stop offset="0%" stop-color="#00d4ff"/>
-              <stop offset="100%" stop-color="#7b5ea7"/>
-            </linearGradient>
-          </defs>
-        </svg>
-      </div>
-      <div class="logo-text">
-        <span class="logo-title">DAP</span>
-        <span class="logo-sub">Asset Protection</span>
-      </div>
+      <img src="/assets/logo-full-v2.png" alt="WRAITH" class="main-logo-full">
+      <img src="/assets/min-logo.png" alt="WRAITH" class="main-logo-icon">
     </div>
 
     <nav class="sidebar-nav">
@@ -66,26 +59,22 @@
         <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <circle cx="11" cy="11" r="8"></circle>
           <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          <line x1="11" y1="8" x2="11" y2="14"></line>
-          <line x1="8" y1="11" x2="14" y2="11"></line>
+          <path d="M11 8v6M8 11h6"/>
         </svg>
         <span>Discovery</span>
       </button>
       <button class="nav-item" data-page="scan" id="nav-scan">
         <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <circle cx="11" cy="11" r="7"/>
-          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-          <path d="M8 11h6M11 8v6"/>
+          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+          <line x1="8" y1="21" x2="16" y2="21"/>
+          <line x1="12" y1="17" x2="12" y2="21"/>
+          <circle cx="12" cy="10" r="3"/>
         </svg>
         <span>Scan</span>
       </button>
       <button class="nav-item" data-page="reports" id="nav-reports">
         <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-          <polyline points="14,2 14,8 20,8"/>
-          <line x1="8" y1="13" x2="16" y2="13"/>
-          <line x1="8" y1="17" x2="16" y2="17"/>
-          <line x1="8" y1="9" x2="10" y2="9"/>
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
         </svg>
         <span>Reports</span>
         <span class="badge" id="badge-reports"></span>
@@ -93,19 +82,35 @@
     </nav>
 
     <div class="sidebar-footer">
-      <div class="status-dot-row">
-        <span class="status-dot" id="yolo-dot"></span>
-        <span class="status-label" id="yolo-label">YOLOv8</span>
+      <div class="status-grid">
+        <div class="status-item" data-tooltip="YOLOv8 Object Detection">
+          <span class="status-dot" id="yolo-dot"></span>
+          <span class="status-label" id="yolo-label">YOLOv8</span>
+        </div>
+        <div class="status-item" data-tooltip="pHash Fingerprinting Engine">
+          <span class="status-dot active"></span>
+          <span class="status-label">pHash Engine</span>
+        </div>
+        <div class="status-item" data-tooltip="Gemini 1.5 Cloud Intelligence">
+          <span class="status-dot" id="gemini-dot"></span>
+          <span class="status-label" id="gemini-label">Gemini Engine</span>
+        </div>
+        <div class="status-item" data-tooltip="Active processing jobs">
+          <span class="status-dot" id="jobs-count-dot"></span>
+          <span class="status-label" id="v-jobs-header">0 Jobs</span>
+        </div>
       </div>
-      <div class="status-dot-row">
-        <span class="status-dot active"></span>
-        <span class="status-label">pHash Engine</span>
-      </div>
+      
+      <button class="btn btn-primary btn-sm w-full" onclick="App.refreshAll()" id="btn-sync" style="margin-top:12px; gap:8px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="13" height="13"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+        <span>Sync Engine</span>
+      </button>
     </div>
   </aside>
 
   <!-- ── Main ─────────────────────────────────────────────────── -->
   <main class="main-content">
+
 
     <!-- ════ Dashboard ════ -->
     <section class="page active" id="page-dashboard">
@@ -165,7 +170,11 @@
           <button class="btn btn-danger btn-sm" onclick="App.clearDB()">Clear DB</button>
         </div>
         <div id="db-clips-list" class="clips-list">
-          <div class="empty-state">No clips ingested yet.</div>
+          <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40" style="margin-bottom:12px;opacity:0.5;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <p>No clips ingested yet.</p>
+            <button class="btn btn-ghost btn-sm mt-2" onclick="Router.navigate('ingest')">Ingest Fingerprints</button>
+          </div>
         </div>
       </div>
 
@@ -181,8 +190,19 @@
     <!-- ════ Ingest ════ -->
     <section class="page" id="page-ingest">
       <div class="page-header">
-        <h1>Ingest Official Clips</h1>
-        <p class="page-sub">Phase 1 — Extract pHash fingerprints from your official media library</p>
+        <div>
+          <h1>Ingest Official Clips</h1>
+          <p class="page-sub">Phase 1 — Extract pHash fingerprints from your official media library</p>
+        </div>
+      </div>
+
+      <div class="info-box">
+        <div class="info-box-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        </div>
+        <div class="info-box-content">
+          <p><strong>Phase 1: Fingerprinting.</strong> Ingesting videos creates unique digital "DNA" (pHash) for each frame. This allows the system to recognize content even if it's cropped, resized, or re-encoded by pirates.</p>
+        </div>
       </div>
 
       <div class="two-col">
@@ -195,16 +215,9 @@
               <span class="form-hint">YouTube link, specific video file, or folder of sports default clips</span>
             </div>
             <div class="form-group">
-              <label for="ingest-interval">Frame Sampling Interval: <span id="ingest-interval-val">2.0s</span></label>
+              <label for="ingest-interval" data-tooltip="Lower interval = higher precision but slower processing.">Frame Sampling Interval: <span id="ingest-interval-val">2.0s</span></label>
               <input type="range" id="ingest-interval" class="slider" min="0.5" max="10" step="0.5" value="2" />
               <div class="slider-labels"><span>0.5s</span><span>10s</span></div>
-            </div>
-            <div class="form-group switch-row">
-              <label>Overwrite Cached Clips</label>
-              <label class="switch">
-                <input type="checkbox" id="ingest-overwrite" />
-                <span class="switch-thumb"></span>
-              </label>
             </div>
             <label class="check-container mt-2">
               <input type="checkbox" id="ingest-overwrite">
@@ -244,8 +257,19 @@
     <!-- ════ Scan ════ -->
     <section class="page" id="page-scan">
       <div class="page-header">
-        <h1>Scan Suspect Video</h1>
-        <p class="page-sub">Phases 2–4 — Detect, verify, and report unauthorized use</p>
+        <div>
+          <h1>Scan Suspect Video</h1>
+          <p class="page-sub">Phases 2–4 — Detect, verify, and report unauthorized use</p>
+        </div>
+      </div>
+
+      <div class="info-box">
+        <div class="info-box-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        </div>
+        <div class="info-box-content">
+          <p><strong>Verification Pipeline.</strong> The system compares suspect frames against your DB (Phase 2), uses YOLOv8 AI to find official logos (Phase 3), and generates a similarity report (Phase 4).</p>
+        </div>
       </div>
 
       <div class="two-col">
@@ -264,12 +288,12 @@
               </select>
             </div>
             <div class="form-group">
-              <label for="scan-threshold">Hamming Threshold: <span id="scan-threshold-val">8</span></label>
+              <label for="scan-threshold" data-tooltip="Hamming Distance: Lower is stricter (exact match), higher allows for more distortion.">Hamming Threshold: <span id="scan-threshold-val">8</span></label>
               <input type="range" id="scan-threshold" class="slider" min="1" max="32" step="1" value="8" />
               <div class="slider-labels"><span>1 (strict)</span><span>32 (loose)</span></div>
             </div>
             <div class="form-group">
-              <label for="scan-interval">Frame Interval: <span id="scan-interval-val">2.0s</span></label>
+              <label for="scan-interval" data-tooltip="How often to grab a frame from the suspect video for comparison.">Frame Interval: <span id="scan-interval-val">2.0s</span></label>
               <input type="range" id="scan-interval" class="slider" min="0.5" max="10" step="0.5" value="2" />
               <div class="slider-labels"><span>0.5s</span><span>10s</span></div>
             </div>
@@ -402,11 +426,18 @@
       </div>
     </section>
 
-    <!-- ════ Reports ════ -->
     <section class="page" id="page-reports">
       <div class="page-header">
-        <h1>Reports</h1>
-        <p class="page-sub">Saved similarity reports from previous scans</p>
+        <div>
+          <h1>Reports</h1>
+          <p class="page-sub">Saved similarity reports from previous scans</p>
+        </div>
+        <div class="page-header-actions">
+          <button class="btn btn-danger btn-sm" onclick="App.clearReports()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="vertical-align:middle;margin-right:4px;"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+            Clear All
+          </button>
+        </div>
       </div>
 
       <div id="reports-grid" class="reports-grid">
