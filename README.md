@@ -1,4 +1,4 @@
-# WRAITH — Digital Asset Protection (DAP) System
+# WRAITH 
 
 **WRAITH V3.5m Cloud-Native** is a premium, multimodal AI intelligence platform designed to proactively detect, verify, and dismantle unauthorized media distribution (piracy) across the global digital landscape. It provides zero-day resilience for sports leagues, film studios, and high-value content owners.
 
